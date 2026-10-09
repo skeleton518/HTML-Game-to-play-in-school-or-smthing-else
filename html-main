@@ -1,0 +1,787 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>HOMEWORK</title>
+<style>
+  * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+  html, body {
+    margin: 0; padding: 0; height: 100%;
+    background: #0d0b14;
+    color: #e8e0d0;
+    font-family: 'Courier New', monospace;
+    overflow: hidden;
+    image-rendering: pixelated;
+  }
+  #wrap {
+    display: flex; flex-direction: column; align-items: center; justify-content: center;
+    height: 100%; width: 100%; position: relative;
+  }
+  #title {
+    font-size: 22px;
+    letter-spacing: 2px;
+    color: #f0c674;
+    text-shadow: 2px 2px 0 #4a2c14;
+    margin-bottom: 6px;
+    user-select: none;
+  }
+  #gameArea {
+    position: relative;
+    border: 4px solid #3a2e4d;
+    outline: 2px solid #15101f;
+    box-shadow: 0 0 0 2px #0d0b14, 0 4px 0 #000;
+    background: #16121f;
+  }
+  canvas { display: block; background: #16121f; }
+
+  #hud {
+    position: absolute; top: 6px; left: 6px; right: 6px;
+    display: flex; justify-content: space-between;
+    font-size: 12px; pointer-events: none;
+    text-shadow: 1px 1px 0 #000;
+  }
+  #hud span { background: rgba(10,8,16,0.55); padding: 2px 5px; border: 1px solid #3a2e4d; }
+
+  .screen {
+    position: absolute; top: 0; left: 0; width: 100%; height: 100%;
+    display: none; flex-direction: column; align-items: center; justify-content: center;
+    background: rgba(8,6,14,0.86);
+    text-align: center; padding: 10px;
+  }
+  .screen.show { display: flex; }
+  .screen h2 {
+    color: #f0c674; font-size: 18px; margin: 4px 0; text-shadow: 2px 2px 0 #4a2c14;
+    letter-spacing: 1px;
+  }
+  .screen p { font-size: 11px; margin: 3px 0; color: #b8aed0; max-width: 260px; }
+  .pixbtn {
+    font-family: inherit;
+    background: #3a2e4d;
+    color: #e8e0d0;
+    border: 2px solid #15101f;
+    box-shadow: 2px 2px 0 #000;
+    padding: 6px 14px;
+    font-size: 12px;
+    margin-top: 10px;
+    cursor: pointer;
+    letter-spacing: 1px;
+  }
+  .pixbtn:hover { background: #4e3d66; }
+  .pixbtn:active { box-shadow: 0 0 0 #000; transform: translate(2px,2px); }
+
+  #bottomBar {
+    display: flex; gap: 8px; margin-top: 8px; align-items: center;
+    font-size: 10px; color: #7c7291;
+  }
+  #bottomBar button {
+    font-family: inherit; background: #1f1a2b; color: #b8aed0; border: 1px solid #3a2e4d;
+    padding: 3px 8px; cursor: pointer; font-size: 10px;
+  }
+  #bottomBar button:hover { color: #f0c674; }
+
+  #pausedTag {
+    position: absolute; top: 6px; left: 50%; transform: translateX(-50%);
+    font-size: 11px; background: rgba(10,8,16,0.7); border: 1px solid #3a2e4d;
+    padding: 2px 8px; display: none; letter-spacing: 2px; color: #f0c674;
+  }
+
+  #toast {
+    position: absolute; bottom: 8px; left: 50%; transform: translateX(-50%);
+    font-size: 10px; color: #f0c674; background: rgba(10,8,16,0.75);
+    border: 1px solid #3a2e4d; padding: 3px 7px; opacity: 0; pointer-events: none;
+    transition: opacity 0.3s; white-space: nowrap;
+  }
+  #toast.show { opacity: 1; }
+
+  #credit { font-size: 9px; color: #514a63; margin-top: 6px; letter-spacing: 1px; }
+</style>
+</head>
+<body>
+<div id="wrap">
+  <div id="title">* HOMEWORK *</div>
+  <div id="gameArea">
+    <canvas id="game" width="480" height="320"></canvas>
+    <div id="hud">
+      <span id="scoreDisp">COINS: 0</span>
+      <span id="bestDisp">BEST: 0</span>
+    </div>
+    <div id="pausedTag">-- PAUSED --</div>
+    <div id="toast"></div>
+
+    <div id="startScreen" class="screen show">
+      <h2>HOMEWORK</h2>
+      <p>A tiny hero. A dark basement. Too many goblins.</p>
+      <p>WASD/Arrows move. SPACE to dash-attack. Grab coins, dodge the lads, don't die.</p>
+      <button class="pixbtn" id="startBtn">START RUN</button>
+      <p style="margin-top:10px; font-size:9px;">best so far: <span id="startBest">0</span> coins</p>
+    </div>
+
+    <div id="overScreen" class="screen">
+      <h2 id="overTitle">YOU DIED</h2>
+      <p id="overMsg">A slime remembers this.</p>
+      <p>Coins collected: <span id="finalScore">0</span></p>
+      <p id="newBestTag" style="color:#f0c674; display:none;">NEW BEST SCORE!</p>
+      <button class="pixbtn" id="restartBtn">TRY AGAIN</button>
+    </div>
+  </div>
+  <div id="bottomBar">
+    <button id="muteBtn">SOUND: ON</button>
+    <button id="pauseBtn">PAUSE</button>
+  </div>
+  <div id="credit">made in a dorm room, probably past bedtime</div>
+</div>
+
+<script>
+(function(){
+  "use strict";
+
+  // ---------- canvas / scaling ----------
+  const canvas = document.getElementById('game');
+  const ctx = canvas.getContext('2d');
+  ctx.imageSmoothingEnabled = false;
+  const BASE_W = 480, BASE_H = 320;
+
+  function fitCanvas(){
+    const maxW = Math.min(window.innerWidth - 20, 640);
+    const maxH = Math.min(window.innerHeight - 140, 480);
+    const scale = Math.max(1, Math.min(maxW / BASE_W, maxH / BASE_H));
+    canvas.style.width = (BASE_W * scale) + 'px';
+    canvas.style.height = (BASE_H * scale) + 'px';
+  }
+  window.addEventListener('resize', fitCanvas);
+  fitCanvas();
+
+  // ---------- audio (tiny web audio beeps, no files) ----------
+  let actx = null;
+  let soundOn = true;
+  function ensureAudio(){
+    if (!actx) {
+      try { actx = new (window.AudioContext || window.webkitAudioContext)(); }
+      catch(e){ soundOn = false; }
+    }
+  }
+  function beep(freq, dur, type, vol){
+    if (!soundOn || !actx) return;
+    const t0 = actx.currentTime;
+    const osc = actx.createOscillator();
+    const gain = actx.createGain();
+    osc.type = type || 'square';
+    osc.frequency.setValueAtTime(freq, t0);
+    gain.gain.setValueAtTime((vol!==undefined?vol:0.08), t0);
+    gain.gain.exponentialRampToValueAtTime(0.0001, t0 + dur);
+    osc.connect(gain).connect(actx.destination);
+    osc.start(t0);
+    osc.stop(t0 + dur);
+  }
+  function sfxCoin(){ beep(880, 0.08, 'square', 0.06); setTimeout(()=>beep(1180,0.08,'square',0.05),40); }
+  function sfxHit(){ beep(120, 0.18, 'sawtooth', 0.09); }
+  function sfxDash(){ beep(300, 0.07, 'triangle', 0.05); }
+  function sfxDie(){ beep(200,0.12,'sawtooth',0.08); setTimeout(()=>beep(140,0.2,'sawtooth',0.08),100); setTimeout(()=>beep(80,0.3,'sawtooth',0.07),220); }
+  function sfxEvent(){ beep(660,0.06,'sine',0.05); setTimeout(()=>beep(880,0.06,'sine',0.05),70); setTimeout(()=>beep(1100,0.1,'sine',0.05),140); }
+
+  document.getElementById('muteBtn').addEventListener('click', function(){
+    soundOn = !soundOn;
+    this.textContent = 'SOUND: ' + (soundOn ? 'ON' : 'OFF');
+  });
+
+  // ---------- storage ----------
+  const BEST_KEY = 'homeworkBest';
+  function getBest(){ return parseInt(localStorage.getItem(BEST_KEY) || '0', 10); }
+  function setBest(v){ localStorage.setItem(BEST_KEY, String(v)); }
+  document.getElementById('startBest').textContent = getBest();
+  document.getElementById('bestDisp').textContent = 'BEST: ' + getBest();
+
+  // ---------- input ----------
+  const keys = {};
+  const BLOCK_KEYS = ['ArrowUp','ArrowDown','ArrowLeft','ArrowRight','Space','KeyW','KeyA','KeyS','KeyD'];
+  window.addEventListener('keydown', function(e){
+    if (BLOCK_KEYS.indexOf(e.code) !== -1) e.preventDefault();
+    keys[e.code] = true;
+    if (e.code === 'Space') tryDash();
+    if (e.code === 'KeyP') togglePause();
+  });
+  window.addEventListener('keyup', function(e){ keys[e.code] = false; });
+
+  // ---------- game state ----------
+  let state = 'start'; // start | playing | paused | over
+  let frame = 0;
+  let coins = 0;
+  let elapsed = 0; // seconds survived, drives difficulty
+  let particles = [];
+  let floaters = []; // floating text
+  let shakeT = 0, shakeMag = 0;
+
+  const TILE = 32;
+  const COLS = BASE_W / TILE; // 15
+  const ROWS = BASE_H / TILE; // 10
+
+  // simple color palette
+  const PAL = {
+    floor1: '#1d1830',
+    floor2: '#201a36',
+    wall: '#120f1d',
+    wallEdge: '#3a2e4d',
+    player: '#f0c674',
+    playerDark: '#b89150',
+    coin: '#ffe066',
+    coinDark: '#c9a227',
+    slime: '#79c97a',
+    slimeDark: '#47883f',
+    bat: '#9b6ad1',
+    batDark: '#5e3f8a',
+    rat: '#c97a4e',
+    ratDark: '#8a4f2f',
+    hp: '#e05263',
+  };
+
+  // player
+  const player = {
+    x: BASE_W/2, y: BASE_H/2, w: 14, h: 14,
+    speed: 1.6,
+    hp: 3, maxHp: 3,
+    facing: {x:0,y:1},
+    dashCd: 0, dashActive: 0,
+    invuln: 0,
+    anim: 0,
+  };
+
+  let enemies = [];
+  let coinObjs = [];
+  let nextEnemySpawn = 0;
+  let nextCoinSpawn = 0;
+  let nextEventAt = 600 + Math.random()*400;
+
+  // obstacles (a few static pillars so the "dungeon" has personality)
+  let pillars = [];
+  function genPillars(){
+    pillars = [];
+    const count = 5;
+    for (let i=0;i<count;i++){
+      let gx = 2 + Math.floor(Math.random()*(COLS-4));
+      let gy = 2 + Math.floor(Math.random()*(ROWS-4));
+      pillars.push({x: gx*TILE, y: gy*TILE, w: TILE, h: TILE});
+    }
+  }
+
+  function resetGame(){
+    coins = 0;
+    elapsed = 0;
+    frame = 0;
+    particles = [];
+    floaters = [];
+    player.x = BASE_W/2; player.y = BASE_H/2;
+    player.hp = player.maxHp;
+    player.dashCd = 0; player.dashActive = 0; player.invuln = 60;
+    enemies = [];
+    coinObjs = [];
+    nextEnemySpawn = 90;
+    nextCoinSpawn = 30;
+    nextEventAt = 600 + Math.random()*400;
+    genPillars();
+    updateHud();
+  }
+
+  function updateHud(){
+    document.getElementById('scoreDisp').textContent = 'COINS: ' + coins;
+    document.getElementById('bestDisp').textContent = 'BEST: ' + getBest();
+  }
+
+  // ---------- funny flavor text ----------
+  const coinFlavor = [
+    "a slightly bent coin", "lint-covered gold", "coin (tastes like metal)",
+    "tooth? no, coin.", "ancient currency, questionable value",
+    "a coin with a tiny face on it", "someone's lunch money",
+    "goblin spare change", "coin, suspiciously warm"
+  ];
+  const deathMsgs = [
+    "A slime remembers this.", "The rat wins this round.",
+    "Bats 1, You 0.", "You tripped on a pebble, probably.",
+    "Should've dashed the other way.", "The dungeon dust settles.",
+    "A tiny gravestone appears.", "Someone's getting your coins now."
+  ];
+  const eventMsgs = [
+    "a draft blows through...", "something rattles in the dark",
+    "the torches flicker weirdly", "you hear distant squeaking",
+    "a coin rolls out of nowhere!", "the dungeon hiccups"
+  ];
+
+  // ---------- helpers ----------
+  function rectsOverlap(a,b){
+    return a.x < b.x + b.w && a.x + a.w > b.x && a.y < b.y + b.h && a.y + a.h > b.y;
+  }
+  function clamp(v,min,max){ return Math.max(min, Math.min(max, v)); }
+  function dist(ax,ay,bx,by){ return Math.hypot(ax-bx, ay-by); }
+
+  function spawnParticles(x,y,color,count,speedMul){
+    for (let i=0;i<count;i++){
+      const ang = Math.random()*Math.PI*2;
+      const spd = (0.5 + Math.random()*1.5) * (speedMul||1);
+      particles.push({
+        x:x, y:y, vx: Math.cos(ang)*spd, vy: Math.sin(ang)*spd,
+        life: 20 + Math.random()*15, maxLife: 35, color: color, size: 2+Math.random()*2
+      });
+    }
+  }
+  function spawnFloater(x,y,text,color){
+    floaters.push({x:x,y:y,text:text,color:color||'#e8e0d0',life:50,vy:-0.4});
+  }
+  function screenShake(mag, t){ shakeMag = mag; shakeT = t; }
+
+  function toast(msg){
+    const el = document.getElementById('toast');
+    el.textContent = msg;
+    el.classList.add('show');
+    clearTimeout(toast._t);
+    toast._t = setTimeout(()=> el.classList.remove('show'), 1800);
+  }
+
+  // ---------- pillar collision for a moving rect ----------
+  function blockedByPillars(x,y,w,h, exceptNone){
+    const r = {x:x,y:y,w:w,h:h};
+    for (const p of pillars){
+      if (rectsOverlap(r,p)) return true;
+    }
+    // walls
+    if (x < TILE*0.5 || x+w > BASE_W - TILE*0.5 || y < TILE*0.5 + 20 || y+h > BASE_H - TILE*0.5) return true;
+    return false;
+  }
+
+  // ---------- dash ----------
+  function tryDash(){
+    if (state !== 'playing') return;
+    if (player.dashCd > 0) return;
+    player.dashActive = 10;
+    player.dashCd = 45;
+    player.invuln = Math.max(player.invuln, 12);
+    sfxDash();
+    spawnParticles(player.x+player.w/2, player.y+player.h/2, PAL.player, 10, 1.5);
+    // dash damages nearby enemies (attack)
+    const reach = 26;
+    for (const en of enemies){
+      const d = dist(player.x+player.w/2, player.y+player.h/2, en.x+en.w/2, en.y+en.h/2);
+      if (d < reach){
+        en.hp -= 1;
+        en.hitFlash = 8;
+        const ang = Math.atan2(en.y-player.y, en.x-player.x);
+        en.kx = Math.cos(ang)*4; en.ky = Math.sin(ang)*4;
+        spawnParticles(en.x+en.w/2, en.y+en.h/2, '#fff', 6, 1);
+        if (en.hp <= 0){
+          killEnemy(en);
+        }
+      }
+    }
+  }
+
+  function killEnemy(en){
+    en.dead = true;
+    spawnParticles(en.x+en.w/2, en.y+en.h/2, en.color, 12, 1.3);
+    // small chance enemy drops a bonus coin
+    if (Math.random() < 0.35){
+      coinObjs.push({x: en.x+en.w/2-4, y: en.y+en.h/2-4, w:8, h:8, bob: Math.random()*10});
+    }
+  }
+
+  // ---------- spawning ----------
+  function difficultyFactor(){
+    // ramps up slowly, caps out so it stays fair-ish
+    return clamp(elapsed / 45, 0, 1); // 0..1 over ~45s
+  }
+
+  function spawnEnemy(){
+    const df = difficultyFactor();
+    const types = ['slime','bat','rat'];
+    const type = types[Math.floor(Math.random()*types.length)];
+    // spawn at edge
+    let x,y;
+    const edge = Math.floor(Math.random()*4);
+    if (edge===0){ x = Math.random()*BASE_W; y = 24; }
+    else if (edge===1){ x = Math.random()*BASE_W; y = BASE_H-24; }
+    else if (edge===2){ x = 24; y = 24+Math.random()*(BASE_H-48); }
+    else { x = BASE_W-24; y = 24+Math.random()*(BASE_H-48); }
+
+    const base = {
+      x:x, y:y, w:14, h:14, dead:false, hitFlash:0, kx:0, ky:0, wobble: Math.random()*10
+    };
+    if (type==='slime'){
+      enemies.push(Object.assign(base, {
+        type:'slime', hp:2, speed: 0.4 + df*0.4, color: PAL.slime, dark: PAL.slimeDark
+      }));
+    } else if (type==='bat'){
+      enemies.push(Object.assign(base, {
+        type:'bat', hp:1, speed: 0.9 + df*0.6, color: PAL.bat, dark: PAL.batDark, flutter: Math.random()*100
+      }));
+    } else {
+      enemies.push(Object.assign(base, {
+        type:'rat', hp:1, speed: 1.1 + df*0.7, color: PAL.rat, dark: PAL.ratDark
+      }));
+    }
+  }
+
+  function spawnCoin(){
+    let tries = 0;
+    let x,y;
+    do {
+      x = 30 + Math.random()*(BASE_W-60);
+      y = 50 + Math.random()*(BASE_H-80);
+      tries++;
+    } while (blockedByPillars(x,y,10,10) && tries < 10);
+    coinObjs.push({x:x,y:y,w:10,h:10, bob: Math.random()*10, flavor: coinFlavor[Math.floor(Math.random()*coinFlavor.length)]});
+  }
+
+  // ---------- random events ----------
+  function triggerRandomEvent(){
+    const roll = Math.random();
+    sfxEvent();
+    if (roll < 0.4){
+      // coin shower
+      for (let i=0;i<5;i++) spawnCoin();
+      toast("coin shower! (" + eventMsgs[Math.floor(Math.random()*eventMsgs.length)] + ")");
+    } else if (roll < 0.7){
+      // brief heal
+      if (player.hp < player.maxHp){
+        player.hp = Math.min(player.maxHp, player.hp+1);
+        toast("you found a stale sandwich. +1 HP.");
+      } else {
+        toast(eventMsgs[Math.floor(Math.random()*eventMsgs.length)]);
+      }
+    } else {
+      // mini swarm
+      for (let i=0;i<3;i++) spawnEnemy();
+      toast("uh oh. something woke up.");
+    }
+    nextEventAt = frame + 900 + Math.random()*600;
+  }
+
+  // ---------- update ----------
+  function update(){
+    if (state !== 'playing') return;
+    frame++;
+    elapsed = frame/60;
+
+    // movement input
+    let mx=0,my=0;
+    if (keys['ArrowLeft']||keys['KeyA']) mx -= 1;
+    if (keys['ArrowRight']||keys['KeyD']) mx += 1;
+    if (keys['ArrowUp']||keys['KeyW']) my -= 1;
+    if (keys['ArrowDown']||keys['KeyS']) my += 1;
+
+    if (mx!==0 || my!==0){
+      const len = Math.hypot(mx,my);
+      mx/=len; my/=len;
+      player.facing.x = mx; player.facing.y = my;
+      player.anim += 0.25;
+    }
+
+    let spd = player.speed;
+    if (player.dashActive > 0){ spd = player.speed * 3.2; player.dashActive--; }
+    if (player.dashCd > 0) player.dashCd--;
+    if (player.invuln > 0) player.invuln--;
+
+    const nx = player.x + mx*spd;
+    const ny = player.y + my*spd;
+    if (!blockedByPillars(nx, player.y, player.w, player.h)) player.x = nx;
+    if (!blockedByPillars(player.x, ny, player.w, player.h)) player.y = ny;
+    player.x = clamp(player.x, TILE*0.5, BASE_W-TILE*0.5-player.w);
+    player.y = clamp(player.y, TILE*0.5+20, BASE_H-TILE*0.5-player.h);
+
+    // spawn timers
+    const df = difficultyFactor();
+    nextEnemySpawn--;
+    if (nextEnemySpawn <= 0){
+      spawnEnemy();
+      nextEnemySpawn = Math.max(35, 110 - df*70) + Math.random()*30;
+    }
+    nextCoinSpawn--;
+    if (nextCoinSpawn <= 0){
+      spawnCoin();
+      nextCoinSpawn = 70 + Math.random()*50;
+    }
+    if (frame >= nextEventAt) triggerRandomEvent();
+
+    // enemies
+    for (const en of enemies){
+      if (en.dead) continue;
+      if (en.hitFlash>0) en.hitFlash--;
+      // knockback decay
+      en.kx *= 0.85; en.ky *= 0.85;
+
+      const dx = player.x - en.x, dy = player.y - en.y;
+      const d = Math.hypot(dx,dy) || 1;
+      let mvx = (dx/d)*en.speed, mvy = (dy/d)*en.speed;
+
+      if (en.type === 'bat'){
+        en.flutter += 0.15;
+        mvy += Math.sin(en.flutter)*0.4;
+      }
+      if (en.type === 'slime'){
+        en.wobble += 0.1;
+      }
+
+      en.x += mvx + en.kx;
+      en.y += mvy + en.ky;
+
+      // collide with player
+      if (player.invuln<=0 && rectsOverlap(
+        {x:player.x,y:player.y,w:player.w,h:player.h},
+        {x:en.x,y:en.y,w:en.w,h:en.h})){
+        player.hp--;
+        player.invuln = 70;
+        screenShake(4, 12);
+        sfxHit();
+        spawnParticles(player.x+player.w/2, player.y+player.h/2, PAL.hp, 10, 1.4);
+        const ang = Math.atan2(player.y-en.y, player.x-en.x);
+        player.x += Math.cos(ang)*10; player.y += Math.sin(ang)*10;
+        if (player.hp <= 0){
+          gameOver();
+        }
+      }
+    }
+    enemies = enemies.filter(e => !e.dead);
+
+    // coins
+    for (const c of coinObjs){
+      c.bob += 0.1;
+      if (rectsOverlap({x:player.x,y:player.y,w:player.w,h:player.h}, c)){
+        c.collected = true;
+        coins++;
+        sfxCoin();
+        spawnParticles(c.x+5,c.y+5, PAL.coin, 8, 1);
+        if (c.flavor) spawnFloater(c.x, c.y-4, c.flavor, PAL.coin);
+        updateHud();
+      }
+    }
+    coinObjs = coinObjs.filter(c => !c.collected);
+
+    // particles
+    for (const p of particles){
+      p.x += p.vx; p.y += p.vy; p.vx*=0.94; p.vy*=0.94; p.life--;
+    }
+    particles = particles.filter(p=>p.life>0);
+
+    for (const f of floaters){ f.y += f.vy; f.life--; }
+    floaters = floaters.filter(f=>f.life>0);
+
+    if (shakeT>0) shakeT--;
+  }
+
+  function gameOver(){
+    state = 'over';
+    sfxDie();
+    screenShake(6,20);
+    const best = getBest();
+    const isNew = coins > best;
+    if (isNew) setBest(coins);
+    document.getElementById('finalScore').textContent = coins;
+    document.getElementById('overTitle').textContent = isNew ? 'NEW BEST!' : 'YOU DIED';
+    document.getElementById('overMsg').textContent = deathMsgs[Math.floor(Math.random()*deathMsgs.length)];
+    document.getElementById('newBestTag').style.display = isNew ? 'block' : 'none';
+    document.getElementById('overScreen').classList.add('show');
+    updateHud();
+  }
+
+  // ---------- draw ----------
+  function drawFloor(){
+    for (let gy=0; gy<ROWS; gy++){
+      for (let gx=0; gx<COLS; gx++){
+        const checker = (gx+gy)%2===0;
+        ctx.fillStyle = checker ? PAL.floor1 : PAL.floor2;
+        ctx.fillRect(gx*TILE, gy*TILE, TILE, TILE);
+      }
+    }
+    // border walls
+    ctx.fillStyle = PAL.wall;
+    ctx.fillRect(0,0,BASE_W,20);
+    ctx.fillRect(0,BASE_H-16,BASE_W,16);
+    ctx.fillRect(0,0,16,BASE_H);
+    ctx.fillRect(BASE_W-16,0,16,BASE_H);
+    ctx.strokeStyle = PAL.wallEdge;
+    ctx.lineWidth = 2;
+    ctx.strokeRect(8,8,BASE_W-16,BASE_H-16);
+
+    // pillars
+    for (const p of pillars){
+      ctx.fillStyle = PAL.wall;
+      ctx.fillRect(p.x, p.y, p.w, p.h);
+      ctx.fillStyle = PAL.wallEdge;
+      ctx.fillRect(p.x, p.y, p.w, 4);
+      ctx.fillStyle = '#000';
+      ctx.fillRect(p.x, p.y+p.h-3, p.w, 3);
+    }
+  }
+
+  function drawPlayer(){
+    const bob = Math.sin(player.anim)*1.5;
+    const flash = player.invuln>0 && Math.floor(frame/4)%2===0;
+    if (flash) ctx.globalAlpha = 0.4;
+
+    const px = Math.round(player.x), py = Math.round(player.y + bob);
+    // shadow
+    ctx.fillStyle = 'rgba(0,0,0,0.35)';
+    ctx.beginPath();
+    ctx.ellipse(px+player.w/2, player.y+player.h+2, 7, 2.5, 0,0,Math.PI*2);
+    ctx.fill();
+
+    // body
+    ctx.fillStyle = PAL.playerDark;
+    ctx.fillRect(px, py, player.w, player.h);
+    ctx.fillStyle = PAL.player;
+    ctx.fillRect(px+1, py+1, player.w-2, player.h-2);
+
+    // eyes based on facing
+    ctx.fillStyle = '#2b2418';
+    const ex = player.facing.x, ey = player.facing.y;
+    let e1x=px+4, e1y=py+5, e2x=px+9, e2y=py+5;
+    if (ex>0){ e1x+=2; e2x+=2; } if (ex<0){ e1x-=2; e2x-=2; }
+    if (ey>0){ e1y+=2; e2y+=2; } if (ey<0){ e1y-=1; e2y-=1; }
+    ctx.fillRect(e1x, e1y, 2, 2);
+    ctx.fillRect(e2x, e2y, 2, 2);
+
+    // dash trail
+    if (player.dashActive>0){
+      ctx.globalAlpha = 0.25;
+      ctx.fillStyle = PAL.player;
+      ctx.fillRect(px - player.facing.x*8, py - player.facing.y*8, player.w, player.h);
+      ctx.globalAlpha = 1;
+    }
+    ctx.globalAlpha = 1;
+  }
+
+  function drawEnemy(en){
+    const flash = en.hitFlash>0;
+    ctx.fillStyle = flash ? '#fff' : en.dark;
+    const wob = en.type==='slime' ? Math.sin(en.wobble)*1.5 : 0;
+    const ex = Math.round(en.x), ey = Math.round(en.y+wob);
+
+    // shadow
+    ctx.fillStyle = 'rgba(0,0,0,0.3)';
+    ctx.beginPath();
+    ctx.ellipse(ex+en.w/2, en.y+en.h+1, 6,2,0,0,Math.PI*2);
+    ctx.fill();
+
+    ctx.fillStyle = flash ? '#fff' : en.dark;
+    ctx.fillRect(ex, ey, en.w, en.h);
+    ctx.fillStyle = flash ? '#fff' : en.color;
+    ctx.fillRect(ex+1, ey+1, en.w-2, en.h-2);
+
+    ctx.fillStyle = '#1a1420';
+    if (en.type==='slime'){
+      ctx.fillRect(ex+4, ey+5, 2,2);
+      ctx.fillRect(ex+8, ey+5, 2,2);
+    } else if (en.type==='bat'){
+      // little wings
+      ctx.fillStyle = flash ? '#fff' : en.dark;
+      ctx.fillRect(ex-3, ey+3, 3, 5);
+      ctx.fillRect(ex+en.w, ey+3, 3, 5);
+      ctx.fillStyle = '#ff5050';
+      ctx.fillRect(ex+3, ey+5, 2,2);
+      ctx.fillRect(ex+9, ey+5, 2,2);
+    } else { // rat
+      ctx.fillStyle = flash ? '#fff' : en.dark;
+      ctx.fillRect(ex+en.w-2, ey-3, 2, 4); // ear
+      ctx.fillStyle = '#1a1420';
+      ctx.fillRect(ex+4, ey+5, 2,2);
+    }
+  }
+
+  function drawCoin(c){
+    const bob = Math.sin(c.bob)*2;
+    const cy = c.y + bob;
+    ctx.fillStyle = PAL.coinDark;
+    ctx.fillRect(c.x, cy, c.w, c.h);
+    ctx.fillStyle = PAL.coin;
+    ctx.fillRect(c.x+1, cy+1, c.w-2, c.h-2);
+  }
+
+  function drawParticles(){
+    for (const p of particles){
+      ctx.globalAlpha = Math.max(0, p.life/p.maxLife);
+      ctx.fillStyle = p.color;
+      ctx.fillRect(p.x, p.y, p.size, p.size);
+    }
+    ctx.globalAlpha = 1;
+  }
+
+  function drawFloaters(){
+    ctx.font = '9px monospace';
+    ctx.textAlign = 'center';
+    for (const f of floaters){
+      ctx.globalAlpha = Math.max(0, f.life/50);
+      ctx.fillStyle = f.color;
+      ctx.fillText(f.text, f.x, f.y);
+    }
+    ctx.globalAlpha = 1;
+    ctx.textAlign = 'left';
+  }
+
+  function drawHearts(){
+    for (let i=0;i<player.maxHp;i++){
+      const x = BASE_W/2 - (player.maxHp*9)/2 + i*9;
+      const y = 4;
+      ctx.fillStyle = i < player.hp ? PAL.hp : '#3a2e4d';
+      ctx.fillRect(x, y, 7, 7);
+    }
+  }
+
+  function render(){
+    ctx.save();
+    ctx.clearRect(0,0,BASE_W,BASE_H);
+
+    if (shakeT>0){
+      const sx = (Math.random()-0.5)*shakeMag;
+      const sy = (Math.random()-0.5)*shakeMag;
+      ctx.translate(sx, sy);
+    }
+
+    drawFloor();
+    for (const c of coinObjs) drawCoin(c);
+    for (const en of enemies) drawEnemy(en);
+    drawPlayer();
+    drawParticles();
+    drawFloaters();
+    drawHearts();
+
+    ctx.restore();
+  }
+
+  // ---------- main loop ----------
+  function loop(){
+    update();
+    render();
+    requestAnimationFrame(loop);
+  }
+
+  // ---------- pause ----------
+  function togglePause(){
+    if (state === 'playing'){
+      state = 'paused';
+      document.getElementById('pausedTag').style.display = 'block';
+    } else if (state === 'paused'){
+      state = 'playing';
+      document.getElementById('pausedTag').style.display = 'none';
+    }
+  }
+  document.getElementById('pauseBtn').addEventListener('click', function(){
+    if (state==='playing' || state==='paused') togglePause();
+  });
+
+  // ---------- buttons ----------
+  document.getElementById('startBtn').addEventListener('click', function(){
+    ensureAudio();
+    document.getElementById('startScreen').classList.remove('show');
+    resetGame();
+    state = 'playing';
+  });
+  document.getElementById('restartBtn').addEventListener('click', function(){
+    document.getElementById('overScreen').classList.remove('show');
+    resetGame();
+    state = 'playing';
+  });
+
+  // kick off loop (renders idle start screen dungeon behind menu too)
+  genPillars();
+  requestAnimationFrame(loop);
+})();
+</script>
+</body>
+</html>
